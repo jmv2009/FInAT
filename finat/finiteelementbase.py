@@ -137,6 +137,14 @@ class FiniteElementBase(metaclass=ABCMeta):
         :param entity: the cell entity on which to tabulate.
         '''
 
+    @abstractmethod
+    def dual_evaluation(self, other_fe):
+        '''Return code for applying the element's nodes to the basis functions
+        of an arbitrary input element.
+
+        :param other_fe: A :class`~.finiteelementbase.FiniteElementBase` object
+        '''
+
     @abstractproperty
     def mapping(self):
         '''Appropriate mapping from the reference cell to a physical cell for

@@ -9,7 +9,7 @@ import gem
 
 from finat.finiteelementbase import FiniteElementBase
 from finat.sympy2gem import sympy2gem
-
+from finat.point_set import PointSet
 
 class FiatElement(FiniteElementBase):
     """Base class for finite elements for which the tabulation is provided
@@ -134,6 +134,66 @@ class FiatElement(FiniteElementBase):
         # Dispatch on FIAT element class
         return point_evaluation(self._element, order, refcoords, (entity_dim, entity_i))
 
+    def dual_evaluation(self, other_el):
+        '''Return code for applying the element's nodes to the basis functions
+        of an arbitrary input element.
+
+        :param other_fe: A :class`~.finiteelementbase.FiniteElementBase` object
+        '''
+        assert isinstance(self._element, FIAT.CiarletElement)
+
+        nodes = self._element.dual_basis()
+        num_pts = 0
+        pts = {}
+        for ell in nodes:
+            pd = ell.pt_dict
+            for pt in pd:
+                if pt not in pts:
+                    pts[pt] = num_pts
+                    num_pts += 1
+
+        ptarray = np.asarray([x[0] for x in sorted(pts.items(), key=lambda x: x[1])])
+        ptset = PointSet(ptarray)
+
+        other_vals, = other_el.basis_evaluation(0, ptset).values()
+       
+        inds = gem.indices(len(other_vals.shape))
+        other_vals_i = other_vals[inds]
+
+        psindex, = ptset.indices
+
+        fooind = tuple([x for x in list(ptset.indices)+list(inds)])
+        
+        other_vals_shaped = gem.ComponentTensor(other_vals_i, fooind)
+
+        result_shape = (self.space_dimension(), other_el.space_dimension())
+
+        result = np.zeros(result_shape, dtype=object)
+        for multiindex in np.ndindex(result.shape):
+            result[multiindex] = gem.Literal(result[multiindex])
+
+        if self.value_shape==():
+            for i, ell in enumerate(nodes):
+                pd = ell.pt_dict
+                for j in range(other_el.space_dimension()):
+                    for pt, stuff in pd.items():
+                        pt_num = pts[pt]
+                        for (wt, comp) in stuff:
+                            idx = (pt_num, j)
+                            result[i, j] += wt * gem.Indexed(other_vals_shaped, idx)
+        elif len(self.value_shape) == 1:
+            for i, ell in enumerate(nodes):
+                pd = ell.pt_dict
+                for j in range(other_el.space_dimension()):
+                    for pt, stuff in pd.items():
+                        pt_num = pts[pt]
+                        for (wt, comp) in stuff:
+                            idx = tuple([pt_num, j] + list(comp))
+                            result[i, j] += wt * gem.Indexed(other_vals_shaped, idx)
+                                    
+
+        return gem.ListTensor(result)
+        
     @property
     def mapping(self):
         mappings = set(self._element.mapping())
