@@ -1,6 +1,8 @@
 import numpy as np
 import sympy as sp
 from functools import singledispatch
+from collections import defaultdict
+import itertools
 
 import FIAT
 from FIAT.polynomial_set import mis, form_matrix_product
@@ -10,6 +12,7 @@ import gem
 from finat.finiteelementbase import FiniteElementBase
 from finat.sympy2gem import sympy2gem
 from finat.point_set import PointSet
+
 
 class FiatElement(FiniteElementBase):
     """Base class for finite elements for which the tabulation is provided
@@ -134,66 +137,55 @@ class FiatElement(FiniteElementBase):
         # Dispatch on FIAT element class
         return point_evaluation(self._element, order, refcoords, (entity_dim, entity_i))
 
-    def dual_evaluation(self, other_el):
+    def dual_evaluation(self, other):
         '''Return code for applying the element's nodes to the basis functions
         of an arbitrary input element.
 
-        :param other_fe: A :class`~.finiteelementbase.FiniteElementBase` object
+        :param other: A :class`~.finiteelementbase.FiniteElementBase` object
         '''
         assert isinstance(self._element, FIAT.CiarletElement)
+        assert self.value_shape == other.value_shape
+        # FIXME: What else to assert?
 
         nodes = self._element.dual_basis()
-        num_pts = 0
-        pts = {}
-        for ell in nodes:
-            pd = ell.pt_dict
-            for pt in pd:
-                if pt not in pts:
-                    pts[pt] = num_pts
-                    num_pts += 1
 
-        ptarray = np.asarray([x[0] for x in sorted(pts.items(), key=lambda x: x[1])])
-        ptset = PointSet(ptarray)
+        # Compute a consistent ordering of the points in each nodes point_dict
+        # FIXME: What if multiple nodes have the same point?
+        # FIXME: Should FIAT expose a more array, rather than dict-based interface?
+        c = itertools.count()
+        point_numbering = defaultdict(lambda: next(c))
+        for point in itertools.chain(*(ell.pt_dict for ell in nodes)):
+            point_numbering[point]
 
-        other_vals, = other_el.basis_evaluation(0, ptset).values()
-       
-        inds = gem.indices(len(other_vals.shape))
-        other_vals_i = other_vals[inds]
+        points = np.asarray([x[0] for x in sorted(point_numbering.items(), key=lambda x: x[1])])
+        point_set = PointSet(points)
 
-        psindex, = ptset.indices
+        other_vals, = other.basis_evaluation(0, point_set).values()
 
-        fooind = tuple([x for x in list(ptset.indices)+list(inds)])
-        
-        other_vals_shaped = gem.ComponentTensor(other_vals_i, fooind)
+        indices = other.get_indices()
+        vals = other_vals[indices]
 
-        result_shape = (self.space_dimension(), other_el.space_dimension())
+        psindices = point_set.indices
 
-        result = np.zeros(result_shape, dtype=object)
+        vals = gem.ComponentTensor(vals, psindices + indices)
+
+        result_shape = (self.space_dimension(), other.space_dimension())
+
+        result = np.empty(result_shape, dtype=object)
         for multiindex in np.ndindex(result.shape):
-            result[multiindex] = gem.Literal(result[multiindex])
+            result[multiindex] = gem.Zero()
 
-        if self.value_shape==():
-            for i, ell in enumerate(nodes):
-                pd = ell.pt_dict
-                for j in range(other_el.space_dimension()):
-                    for pt, stuff in pd.items():
-                        pt_num = pts[pt]
-                        for (wt, comp) in stuff:
-                            idx = (pt_num, j)
-                            result[i, j] += wt * gem.Indexed(other_vals_shaped, idx)
-        elif len(self.value_shape) == 1:
-            for i, ell in enumerate(nodes):
-                pd = ell.pt_dict
-                for j in range(other_el.space_dimension()):
-                    for pt, stuff in pd.items():
-                        pt_num = pts[pt]
-                        for (wt, comp) in stuff:
-                            idx = tuple([pt_num, j] + list(comp))
-                            result[i, j] += wt * gem.Indexed(other_vals_shaped, idx)
-                                    
+        for i, ell in enumerate(nodes):
+            pd = ell.pt_dict
+            for j in range(other.space_dimension()):
+                for pt, evals in pd.items():
+                    point_idx = point_numbering[pt]
+                    for (wt, comp) in evals:
+                        idx = (point_idx, j) + comp
+                        result[i, j] += wt * vals[idx]
 
         return gem.ListTensor(result)
-        
+
     @property
     def mapping(self):
         mappings = set(self._element.mapping())
