@@ -9,6 +9,14 @@ from gem.utils import cached_property
 from finat.finiteelementbase import FiniteElementBase
 
 
+def flatten_permutations(permutations):
+    flattened_permutations = {}
+    for dims, perms in permutations.items():
+        flattened_permutations[sum(dims)] = {o: perms[o_prod] 
+                                             for o, o_prod in enumerate(sorted(perms))}
+    return flattened_permutations
+
+
 class FlattenedDimensions(FiniteElementBase):
     """Class for elements on quadrilaterals and hexahedra.  Wraps a tensor
     product element on a tensor product cell, and flattens its entity
@@ -48,6 +56,13 @@ class FlattenedDimensions(FiniteElementBase):
 
     def entity_dofs(self):
         return self._entity_dofs
+
+    @cached_property
+    def _permutations(self):
+        return flatten_permutations(self.product.permutations())
+
+    def permutations(self):
+        return self._permutations
 
     def space_dimension(self):
         return self.product.space_dimension()

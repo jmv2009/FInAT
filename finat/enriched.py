@@ -47,6 +47,10 @@ class EnrichedElement(FiniteElementBase):
         return concatenate_entity_dofs(self.cell, self.elements,
                                        methodcaller("entity_dofs"))
 
+    def permutations(self):
+        '''Return the map ...'''
+        return concatenate_permutations(self.cell, self.elements)
+
     @cached_property
     def _entity_support_dofs(self):
         return concatenate_entity_dofs(self.cell, self.elements,
@@ -166,3 +170,25 @@ def concatenate_entity_dofs(ref_el, elements, method):
             for ent, off in dofs.items():
                 entity_dofs[dim][ent] += list(map(partial(add, offsets[i]), off))
     return entity_dofs
+
+
+def concatenate_permutations(ref_el, elements):
+    """Combine the entity DoFs from a list of elements into a combined
+
+    :arg ref_el: the reference cell
+    :arg elements: subelement whose DoFs are concatenated
+    :returns: concatenated entity DoFs dict
+    """
+    permutations = {}
+    offsets = {}
+    for e in elements:
+        d = e.permutations()
+        for dim, perms in d.items():
+            permutations_dim = permutations.setdefault(dim, {})
+            offsets_dim = offsets.setdefault(dim, {})
+            for o, perm in perms.items():
+                permutations_dim_ornt = permutations_dim.setdefault(o, [])
+                offsets_dim_ornt = offsets_dim.setdefault(o, [0, ])
+                permutations_dim_ornt += list(offsets_dim_ornt[0] + p for p in perm)
+                offsets_dim_ornt[0] += len(perm)
+    return permutations

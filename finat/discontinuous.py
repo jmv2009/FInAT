@@ -3,7 +3,7 @@ import FIAT
 from gem.utils import cached_property
 
 from finat.finiteelementbase import FiniteElementBase
-
+from finat.fiat_elements import DiscontinuousLagrange
 
 class DiscontinuousElement(FiniteElementBase):
     """Element wrapper that makes a FInAT element discontinuous."""
@@ -35,6 +35,13 @@ class DiscontinuousElement(FiniteElementBase):
 
     def entity_dofs(self):
         return self._entity_dofs
+
+    def permutations(self):
+        if isinstance(self.element, DiscontinuousLagrange):
+            print("FInAT:discontiuous::::This part is not yet complete")
+            return self.element.permutations()
+        else:
+            return super().permutations()
 
     def space_dimension(self):
         return self.element.space_dimension()

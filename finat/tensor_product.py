@@ -55,6 +55,13 @@ class TensorProductElement(FiniteElementBase):
     def entity_dofs(self):
         return self._entity_dofs
 
+    @cached_property
+    def _permutations(self):
+        return compose_permutations(self.factors)
+
+    def permutations(self):
+        return self._permutations
+
     def space_dimension(self):
         return numpy.prod([fe.space_dimension() for fe in self.factors])
 
@@ -196,6 +203,31 @@ def productise(factors, method):
         # flatten entity numbers
         dofs[dim] = dict(enumerate(v for k, v in sorted(dim_dofs)))
     return dofs
+
+
+def compose_permutations(factors):
+    '''Tensor product the dict mapping topological entities to dof permutations across factors.
+
+    :arg factors: element factors.
+    '''
+    permutations = {}
+    for dim_tuple in product(*[fe.cell.get_topology().keys() for fe in factors]):
+        perms = []
+        ndof_tuple = tuple(len(fe.entity_dofs()[d][0]) for fe, d in zip(factors, dim_tuple))
+        no_dofs = any(ndof == 0 for ndof in ndof_tuple)
+        for ornt_tuple in product(*[fe.permutations()[d].keys()
+                                    for fe, d in zip(factors, dim_tuple)]):
+            if no_dofs:
+                perms.append((ornt_tuple, ()))
+            else:
+                a = numpy.arange(numpy.prod(ndof_tuple)).reshape(ndof_tuple)
+                for i, (d, o) in enumerate(zip(dim_tuple, ornt_tuple)):
+                    perm = factors[i].permutations()[d][o]
+                    a = a.swapaxes(0, i)[perm, :].swapaxes(0, i)
+                perms.append((ornt_tuple, a.reshape(-1).tolist()))
+        # flatten entity numbers
+        permutations[dim_tuple] = dict(perms)
+    return permutations
 
 
 def factor_point_set(product_cell, product_dim, point_set):

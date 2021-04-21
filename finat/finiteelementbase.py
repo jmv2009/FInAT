@@ -32,6 +32,38 @@ class FiniteElementBase(metaclass=ABCMeta):
         '''Return the map of topological entities to degrees of
         freedom for the finite element.'''
 
+    def permutations(self):
+        '''Default naive permutations. 
+
+        This is just for making tests pass.
+        Must be removed once permutations are appropriately defined for all elements.
+        '''
+        perm_dict = {}
+
+        import FIAT
+        if isinstance(self.cell, FIAT.reference_element.TensorProductCell):
+            for dim, entity_dofs in self.entity_dofs().items():
+                n, = set(len(dofs) for dofs in entity_dofs.values())
+                perm = list(range(n))
+                perm_dict[dim] = {}
+                assert len(dim) == 2
+                m0, = set(len(cone) for cone in self.cell.cells[0].topology[dim[0]].values())
+                m1, = set(len(cone) for cone in self.cell.cells[1].topology[dim[1]].values())
+                for i0 in range(0, numpy.math.factorial(m0)*2):
+                    for i1 in range(0, numpy.math.factorial(m1)*2):
+                        perm_dict[dim][(i0, i1)] = perm
+        else:
+            for dim, entity_dofs in self.entity_dofs().items():
+                n, = set(len(dofs) for dofs in entity_dofs.values())
+                perm = list(range(n))
+                if dim == 0:
+                    perm_dict[dim] = {0: perm}
+                else:
+                    m, = set(len(cone) for cone in self.cell.topology[dim].values())
+                    #perm_dict[dim] = {o: perm for o in range(-m, m)}
+                    perm_dict[dim] = {o: perm for o in range(0, numpy.math.factorial(m)*2)}
+        return perm_dict
+
     @cached_property
     def _entity_closure_dofs(self):
         # Compute the nodes on the closure of each sub_entity.

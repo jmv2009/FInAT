@@ -68,6 +68,12 @@ class FiatElement(FiniteElementBase):
     def entity_closure_dofs(self):
         return self._element.entity_closure_dofs()
 
+    def permutations(self):
+        if self._element.permutations() is None:
+            #Not yet implemented
+            return super().permutations()
+        return self._element.permutations()
+
     def space_dimension(self):
         return self._element.space_dimension()
 
